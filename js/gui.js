@@ -90,6 +90,23 @@ function guiinit(){
 			
 		}
 	});
+
+	$('#playheadSpeed').knob({
+		'min':-100,
+		'max':100,
+		'width' : dialwidth,
+		"displayInput" :  false,
+		"val": 0,
+		"angleArc" : 180,
+		"angleOffset" : -90,
+		'bgColor': bg,
+		'fgColor': fg,
+		"change": function(v){
+			playheadSpeed = v / 100;
+			playheadLastTimestamp = null;
+			drawPlayheadLine();
+		}
+	});
 	
 	$('#minus').click(function(){
 		trans = trans * 0.5;
@@ -210,6 +227,9 @@ function guiinit(){
 					var canvas1 = document.getElementById('canvas');
 					//initialize the processing draw when the buffer is ready
 					var processing = new Processing(canvas1,waveformdisplay);
+					playheadPosition = 0;
+					playheadLastTimestamp = null;
+					drawPlayheadLine();
 					load();
 
 				},function(){
@@ -242,6 +262,9 @@ function guiinit(){
     			data = buffer.getChannelData(0);
     			var canvas1 = document.getElementById('canvas');
     			var processing = new Processing(canvas1,waveformdisplay);
+    			playheadPosition = 0;
+    			playheadLastTimestamp = null;
+    			drawPlayheadLine();
     			load();
 
     		},function(){

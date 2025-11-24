@@ -45,6 +45,7 @@
 			
 			<canvas id='canvas'></canvas>
 			<canvas id='canvas2'></canvas>
+			<canvas id='playhead'></canvas>
 			<div id='help'>
 				<br>
 				<div class='row .hidden-xs' id='x'><span class='glyphicon glyphicon-arrow-left'></span> x axis - grain position <span class='glyphicon glyphicon-arrow-right'></span><br><br><span class='glyphicon glyphicon-arrow-up'></span><br>y axis - grain amplitude<br> <span class='glyphicon glyphicon-arrow-down'></span> </div>
@@ -107,9 +108,11 @@
 				<input type="text" class="dial" id='pan' data-min='0' data-max='100' value='20'>
 			</div>
 
-			<div class='col-md-2 col-sm-2 col-xs-2 hidden-xs' >
-				<div class='label hidden-xs'>transpose</div><br><br>
-				<div id='transpose'>
+			<div class='col-md-2 col-sm-2 col-xs-2' >
+				<div class='label hidden-xs'>playhead</div><br><br>
+				<input type="text" class="dial" id='playheadSpeed' data-min='-100' data-max='100' value='0'><br>
+				<div class='label hidden-xs'>transpose</div><br>
+				<div id='transpose' class='hidden-xs'>
 
 					<button id='minus' class='btn'>
 						-12
@@ -118,10 +121,8 @@
 					<button id='plus' class='btn'>
 						+12
 					</button><br><br>
-					<span class="glyphicon glyphicon-question-sign" id='helpbutton'></span>
-					
 				</div>
-				
+				<span class="glyphicon glyphicon-question-sign" id='helpbutton'></span>
 			</div>
 	
 		</div>

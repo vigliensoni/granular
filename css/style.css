@@ -82,6 +82,12 @@ body{
 	
 }
 
+#playhead{
+	position: absolute;
+	pointer-events: none;
+	z-index: 6;
+}
+
 
 
 
@@ -174,7 +180,6 @@ body{
 	font-size: 0.85em;
 	font-weight: 100;
 }
-
 
 
 

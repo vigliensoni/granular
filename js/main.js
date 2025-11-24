@@ -27,6 +27,13 @@ var spread = 0.2;
 var reverb = 0.5;
 var pan = 0.1;
 var trans = 1;
+var playheadSpeed = 0; // -1 to 1 range from the knob
+var playheadPosition = 0;
+var playheadAnimationId = null;
+var playheadLastTimestamp = null;
+var playheadLastGrain = null;
+var playheadCtx;
+var grainsProcessing;
 
 
 //the grain class
@@ -169,6 +176,111 @@ voice.prototype.stop = function(){
 	clearTimeout(this.timeout);
 }
 
+function resizePlayheadCanvas(newW,newH,oldW){
+	var canvas = document.getElementById('playhead');
+	if(!canvas){
+		return;
+	}
+	var ratio = 0;
+	if(oldW && oldW > 0){
+		ratio = playheadPosition / oldW;
+	}
+	canvas.width = newW;
+	canvas.height = newH;
+	if(oldW){
+		playheadPosition = ratio * newW;
+	}
+	playheadCtx = canvas.getContext('2d');
+}
+
+function drawPlayheadLine(){
+	var canvas = document.getElementById('playhead');
+	if(!canvas){
+		return;
+	}
+	if(!playheadCtx){
+		playheadCtx = canvas.getContext('2d');
+	}
+	if(!playheadCtx){
+		return;
+	}
+	var width = w || canvas.width;
+	var height = h || canvas.height;
+	if(!width || !height){
+		return;
+	}
+	if(playheadPosition > width){
+		playheadPosition = playheadPosition % width;
+	}
+	if(playheadPosition < 0){
+		playheadPosition = width + (playheadPosition % width);
+	}
+	playheadCtx.clearRect(0,0,width,height);
+	playheadCtx.strokeStyle = '#2a6496';
+	playheadCtx.lineWidth = 2;
+	playheadCtx.beginPath();
+	playheadCtx.moveTo(playheadPosition,0);
+	playheadCtx.lineTo(playheadPosition,height);
+	playheadCtx.stroke();
+}
+
+function playheadIntervalFromDensity(){
+	var dens = 1 - density;
+	return (dens * 500) + 70;
+}
+
+function playheadLoop(timestamp){
+	if(!buffer || !isloaded || !grainsProcessing){
+		playheadLastTimestamp = timestamp;
+		drawPlayheadLine();
+		playheadAnimationId = requestAnimationFrame(playheadLoop);
+		return;
+	}
+	if(playheadLastTimestamp === null){
+		playheadLastTimestamp = timestamp;
+		playheadLastGrain = timestamp;
+		drawPlayheadLine();
+		playheadAnimationId = requestAnimationFrame(playheadLoop);
+		return;
+	}
+	var delta = (timestamp - playheadLastTimestamp) / 1000;
+	playheadLastTimestamp = timestamp;
+	var speedMultiplier = playheadSpeed * 2; //range -2..2 for playback rate
+	if(Math.abs(speedMultiplier) > 0.001 && buffer.duration > 0 && w > 0){
+		var pxPerSec = (w / buffer.duration) * speedMultiplier;
+		playheadPosition += pxPerSec * delta;
+		if(playheadPosition < 0){
+			playheadPosition = w + (playheadPosition % w);
+		}
+		if(playheadPosition > w){
+			playheadPosition = playheadPosition % w;
+		}
+
+		var nowInterval = playheadIntervalFromDensity();
+		if(!playheadLastGrain){
+			playheadLastGrain = timestamp;
+		}
+		if(timestamp - playheadLastGrain >= nowInterval){
+			var ampY = h * 0.5;
+			new grain(grainsProcessing,buffer,playheadPosition,ampY,attack,release,spread,pan);
+			playheadLastGrain = timestamp;
+		}
+	}else{
+		playheadLastGrain = timestamp;
+	}
+	drawPlayheadLine();
+	playheadAnimationId = requestAnimationFrame(playheadLoop);
+}
+
+function startPlayhead(){
+	if(playheadAnimationId){
+		cancelAnimationFrame(playheadAnimationId);
+	}
+	playheadLastTimestamp = null;
+	playheadLastGrain = null;
+	playheadAnimationId = requestAnimationFrame(playheadLoop);
+}
+
 //loading the first sound with XML HTTP REQUEST
 var request = new XMLHttpRequest();
 	request.open('GET','audio/guitar.mp3',true);
@@ -181,6 +293,8 @@ var request = new XMLHttpRequest();
 			var canvas1 = document.getElementById('canvas');
 			//initialize the processing draw when the buffer is ready
 			var processing = new Processing(canvas1,waveformdisplay);
+			playheadPosition = 0;
+			drawPlayheadLine();
 
 		},function(){
 			console.log('loading failed')
@@ -193,6 +307,7 @@ request.send();
 function waveformdisplay(p){
 	w = parseInt($('#waveform').css('width'),10); //get the width
 	h = parseInt($('#waveform').css('height'),10); //get the height
+	resizePlayheadCanvas(w,h,w);
 
 	//draw the buffer
 	function drawBuffer() {
@@ -225,9 +340,12 @@ function waveformdisplay(p){
 		
 		//change the size on resize
 		$(window).resize(function(){
+			var oldW = w;
 			w = parseInt($('#waveform').css('width'),10);
 			h = parseInt($('#waveform').css('height'),10);
 			p.size(w,h);
+			resizePlayheadCanvas(w,h,oldW);
+			drawPlayheadLine();
 			//redraw buffer on resize
 			p.stroke(255);
 			drawBuffer();
@@ -249,6 +367,7 @@ function grainsdisplay(p){
 
 	//setup
 	p.setup = function(){
+		grainsProcessing = p;
 		p.size(w,h);
 		p.background(0,0);//backgorund black alpha 0
 		p.frameRate(24);
@@ -256,9 +375,12 @@ function grainsdisplay(p){
 		
 		//change the size on resize
 		$(window).resize(function(){
+			var oldW = w;
 			w = parseInt($('#waveform').css('width'),10);
 			h = parseInt($('#waveform').css('height'),10);
 			p.size(w,h);
+			resizePlayheadCanvas(w,h,oldW);
+			drawPlayheadLine();
 
 		});	
 		
@@ -391,6 +513,7 @@ $(document).ready(function(){
 	//grain display init
 	var canvas2 = document.getElementById('canvas2');
 	var processing = new Processing(canvas2,grainsdisplay);
+	startPlayhead();
 
 	document.addEventListener("touchmove",function(e){
 		e.preventDefault();
