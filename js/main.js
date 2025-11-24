@@ -67,16 +67,19 @@ function grain(p,buffer,positionx,positiony,attack,release,spread,pan){
 	
 	//update the position and calcuate the offset
 	this.positionx = positionx;
-	this.offset = this.positionx * (buffer.duration / w); //pixels to seconds
+	var dims = getWaveformDims();
+	var width = dims.width;
+	this.offset = this.positionx * (buffer.duration / width); //pixels to seconds
 	
 	//update and calculate the amplitude
 	this.positiony = positiony;
-	this.amp = this.positiony / h;
+	this.amp = this.positiony / dims.height;
 	this.amp = p.map(this.amp,0.0,1.0,1.0,0.0) * 0.7;
 	
 	//parameters
 	this.attack = attack * 0.4;
 	this.release = release * 1.5;
+	this.grainDuration = Math.max(this.attack + this.release,0.01);
 	
 	if(this.release < 0){
 		this.release = 0.1; // 0 - release causes mute for some reason
@@ -84,8 +87,11 @@ function grain(p,buffer,positionx,positiony,attack,release,spread,pan){
 	this.spread = spread;
 
 	this.randomoffset = (Math.random() * this.spread) - (this.spread / 2); //in seconds
+	var unclampedOffset = this.offset + this.randomoffset;
+	var maxOffset = Math.max(buffer.duration - this.grainDuration,0);
+	var startOffset = Math.min(Math.max(unclampedOffset,0),maxOffset);
 	///envelope
-	this.source.start(this.now,this.offset + this.randomoffset,this.attack + this.release); //parameters (when,offset,duration)
+	this.source.start(this.now,startOffset,this.grainDuration); //parameters (when,offset,duration)
 	this.gain.gain.setValueAtTime(0.0, this.now);
 	this.gain.gain.linearRampToValueAtTime(this.amp,this.now + this.attack);
 	this.gain.gain.linearRampToValueAtTime(0,this.now + (this.attack +  this.release) );
@@ -103,7 +109,7 @@ function grain(p,buffer,positionx,positiony,attack,release,spread,pan){
 	//drawing the lines
 	p.stroke(p.random(125) + 125,p.random(250),p.random(250)); //,(this.amp + 0.8) * 255
 	//p.strokeWeight(this.amp * 5);
-	this.randomoffsetinpixels = this.randomoffset / (buffer.duration / w);
+	this.randomoffsetinpixels = (startOffset - this.offset) / (buffer.duration / width);
 	//p.background();
 	p.line(this.positionx + this.randomoffsetinpixels,0,this.positionx + this.randomoffsetinpixels,p.height);
 	setTimeout(function(){
@@ -176,6 +182,16 @@ voice.prototype.stop = function(){
 	clearTimeout(this.timeout);
 }
 
+function getWaveformDims(){
+	var wf = document.getElementById('waveform');
+	var width = wf ? wf.clientWidth : w;
+	var height = wf ? wf.clientHeight : h;
+	return {
+		width: Math.max(width || 0,1),
+		height: Math.max(height || 0,1)
+	};
+}
+
 function resizePlayheadCanvas(newW,newH,oldW){
 	var canvas = document.getElementById('playhead');
 	if(!canvas){
@@ -185,10 +201,13 @@ function resizePlayheadCanvas(newW,newH,oldW){
 	if(oldW && oldW > 0){
 		ratio = playheadPosition / oldW;
 	}
-	canvas.width = newW;
-	canvas.height = newH;
-	if(oldW){
-		playheadPosition = ratio * newW;
+	var dims = getWaveformDims();
+	var safeW = newW || dims.width;
+	var safeH = newH || dims.height;
+	canvas.width = safeW;
+	canvas.height = safeH;
+	if(oldW && safeW){
+		playheadPosition = ratio * safeW;
 	}
 	playheadCtx = canvas.getContext('2d');
 }
@@ -204,11 +223,9 @@ function drawPlayheadLine(){
 	if(!playheadCtx){
 		return;
 	}
-	var width = w || canvas.width;
-	var height = h || canvas.height;
-	if(!width || !height){
-		return;
-	}
+	var dims = getWaveformDims();
+	var width = Math.max(w || canvas.width || dims.width,1);
+	var height = Math.max(h || canvas.height || dims.height,1);
 	if(playheadPosition > width){
 		playheadPosition = playheadPosition % width;
 	}
@@ -236,6 +253,9 @@ function playheadLoop(timestamp){
 		playheadAnimationId = requestAnimationFrame(playheadLoop);
 		return;
 	}
+	var dims = getWaveformDims();
+	var width = dims.width;
+	var height = dims.height;
 	if(playheadLastTimestamp === null){
 		playheadLastTimestamp = timestamp;
 		playheadLastGrain = timestamp;
@@ -246,23 +266,23 @@ function playheadLoop(timestamp){
 	var delta = (timestamp - playheadLastTimestamp) / 1000;
 	playheadLastTimestamp = timestamp;
 	var speedMultiplier = playheadSpeed * 2; //range -2..2 for playback rate
-	if(Math.abs(speedMultiplier) > 0.001 && buffer.duration > 0 && w > 0){
-		var pxPerSec = (w / buffer.duration) * speedMultiplier;
+	if(Math.abs(speedMultiplier) > 0.001 && buffer.duration > 0 && width > 0){
+		var pxPerSec = (width / buffer.duration) * speedMultiplier;
 		playheadPosition += pxPerSec * delta;
-		if(playheadPosition < 0){
-			playheadPosition = w + (playheadPosition % w);
-		}
-		if(playheadPosition > w){
-			playheadPosition = playheadPosition % w;
-		}
+		// wrap the playhead so it loops when crossing either edge
+		playheadPosition = ((playheadPosition % width) + width) % width;
 
 		var nowInterval = playheadIntervalFromDensity();
 		if(!playheadLastGrain){
 			playheadLastGrain = timestamp;
 		}
 		if(timestamp - playheadLastGrain >= nowInterval){
-			var ampY = h * 0.5;
-			new grain(grainsProcessing,buffer,playheadPosition,ampY,attack,release,spread,pan);
+			var ampY = height * 0.5;
+			try{
+				new grain(grainsProcessing,buffer,playheadPosition,ampY,attack,release,spread,pan);
+			}catch(e){
+				console.warn('Grain spawn failed',e);
+			}
 			playheadLastGrain = timestamp;
 		}
 	}else{
@@ -311,7 +331,7 @@ function waveformdisplay(p){
 
 	//draw the buffer
 	function drawBuffer() {
-	    var step = Math.ceil( data.length / w );
+	    var step = Math.ceil( data.length / Math.max(w,1) );
 	    var amp = h / 2;
 	    
 	    p.background(0);
